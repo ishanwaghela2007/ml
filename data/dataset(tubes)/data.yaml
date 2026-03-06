@@ -1,0 +1,11 @@
+
+path: /Volumes/Untitled 2/desktop/final year project/ml/main/data/dataset(tubes) 
+train: images
+val: images
+
+names:
+  0: '(Valbet)'
+  1: 'Araldite'
+  2: 'BEUTIFUL-N'
+  3: 'Dk Gel'
+  4: 'S K Kant'
