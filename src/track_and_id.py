@@ -4,22 +4,35 @@ import uuid
 import csv
 import datetime
 import os
+import sqlite3
 from pathlib import Path
 from ultralytics import YOLO
 
-def setup_logger(log_file):
-    if not os.path.exists(log_file):
-        with open(log_file, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(['Check_UUID', 'Timestamp', 'Object_Track_ID', 'Brand_Name', 'Confidence'])
+def setup_db(db_path):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS inspections (
+            id TEXT PRIMARY KEY,
+            timestamp TEXT,
+            track_id INTEGER,
+            brand_name TEXT,
+            confidence REAL
+        )
+    ''')
+    conn.commit()
+    return conn
 
-def log_inspection(log_file, track_id, class_name, conf):
+def log_inspection(conn, track_id, class_name, conf):
     check_id = str(uuid.uuid4())
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    with open(log_file, 'a', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow([check_id, timestamp, track_id, class_name, f"{conf:.2f}"])
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO inspections (id, timestamp, track_id, brand_name, confidence)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (check_id, timestamp, track_id, class_name, round(conf, 2)))
+    conn.commit()
     return check_id
 
 def run_system(source_input):
@@ -37,7 +50,9 @@ def run_system(source_input):
         print("⚠️ Custom model not found! Using standard YOLOv11n.")
         model = YOLO("yolo11n.pt")
 
-    setup_logger(log_path)
+    db_path = base_dir / "data/inspections.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = setup_db(db_path)
 
     # Webcam or Video
     if source_input.isnumeric():
@@ -77,10 +92,10 @@ def run_system(source_input):
                 label_text = f"ID:{track_id} {brand_name}" if track_id != -1 else f"{brand_name}"
                 cv2.putText(frame, label_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
-                # Log to CSV
+                # Log to DB
                 if conf > 0.6 and track_id not in logged_objects:
-                    uuid_code = log_inspection(log_path, track_id, brand_name, conf)
-                    print(f"📝 Logged: {uuid_code} | {brand_name}")
+                    uuid_code = log_inspection(conn, track_id, brand_name, conf)
+                    print(f"📝 Logged to DB: {uuid_code} | {brand_name}")
                     logged_objects.add(track_id)
 
         cv2.imshow("ML Brand Detector", frame)
@@ -89,6 +104,7 @@ def run_system(source_input):
 
     cap.release()
     cv2.destroyAllWindows()
+    conn.close()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
