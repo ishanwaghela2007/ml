@@ -40,7 +40,10 @@ if __name__ == "__main__":
     MODEL_DIR = "best_ncnn_model" # Your exported folder
     LABELS = ["tube", "scratch", "crack", "bend", "hole"]
     
-    print("🚀 Initializing Native Tube Detection on Raspberry Pi...")
+    # --- SET THIS TO TRUE TO FIX XCB PROBLEM ---
+    HEADLESS = True 
+    
+    print(f"🚀 Initializing {'Headless ' if HEADLESS else ''}Native Tube Detection...")
     try:
         detector = TubeDetectorNative(MODEL_DIR, LABELS)
         cap = cv2.VideoCapture(0)
@@ -54,15 +57,18 @@ if __name__ == "__main__":
             detector.detect(frame)
             fps = 1 / (time.time() - start)
             
-            # Show FPS
-            cv2.putText(frame, f"FPS: {fps:.2f}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-            cv2.imshow("Pi Edge View", frame)
-            
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+            if HEADLESS:
+                # In headless mode, we just print the status instead of showing a window
+                print(f"\rProcessing @ {fps:.2f} FPS...", end="")
+            else:
+                # This part causes the XCB error if you don't have a monitor/GUI
+                cv2.putText(frame, f"FPS: {fps:.2f}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                cv2.imshow("Pi Edge View", frame)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
                 
         cap.release()
-        cv2.destroyAllWindows()
+        if not HEADLESS:
+            cv2.destroyAllWindows()
     except Exception as e:
-        print(f"❌ Error: {e}")
-        print("💡 Hint: Make sure you copied the 'best_ncnn_model' folder to this directory!")
+        print(f"\n❌ Error: {e}")
