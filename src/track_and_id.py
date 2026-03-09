@@ -38,14 +38,22 @@ def log_inspection(conn, track_id, class_name, conf):
 def run_system(source_input):
     base_dir = Path(__file__).resolve().parent.parent
     
-    # Path to your trained weights
-    model_path = base_dir / "runs/detect/brand_experiment2/weights/best.pt"
+    # Paths to your trained weights (prioritizing lightweight versions for Raspberry Pi)
+    ncnn_model_path = base_dir / "runs/detect/brand_experiment2/weights/best_ncnn_model"
+    tflite_model_path = base_dir / "runs/detect/brand_experiment2/weights/best_saved_model/best_float32.tflite"
+    pt_model_path = base_dir / "runs/detect/brand_experiment2/weights/best.pt"
     log_path = base_dir / "logs/inspection_history.csv"
     
     # Load Model
-    if model_path.exists():
-        print(f"✅ Loading custom trained model: {model_path}")
-        model = YOLO(model_path)
+    if ncnn_model_path.exists():
+        print(f"🚀 Loading highly-optimized NCNN model: {ncnn_model_path}")
+        model = YOLO(str(ncnn_model_path), task='detect')
+    elif tflite_model_path.exists():
+        print(f"🚀 Loading lightweight TFLite model: {tflite_model_path}")
+        model = YOLO(str(tflite_model_path), task='detect')
+    elif pt_model_path.exists():
+        print(f"✅ Loading standard PyTorch model: {pt_model_path}")
+        model = YOLO(str(pt_model_path))
     else:
         print("⚠️ Custom model not found! Using standard YOLOv11n.")
         model = YOLO("yolo11n.pt")
@@ -59,7 +67,9 @@ def run_system(source_input):
         source_input = int(source_input)
     
     cap = cv2.VideoCapture(source_input)
+    
     logged_objects = set()
+    frame_count = 0
 
     print("🎥 Camera Active. Press 'Q' to quit.")
     
@@ -67,8 +77,14 @@ def run_system(source_input):
         success, frame = cap.read()
         if not success: break
 
-        # Using standard prediction with a realistic confidence threshold to prevent ghost detections
-        results = model.predict(frame, conf=0.60, verbose=False)
+        frame_count += 1
+        # Optional: uncomment the next 2 lines to skip every other frame for a huge FPS boost
+        # if frame_count % 2 != 0:
+        #     continue
+
+        # Using a much higher confidence threshold (0.70) to strictly prevent ghost detections when the frame is empty
+        # Explicitly setting imgsz=640 tells the YOLO engine to correctly calculate bounding box scaling
+        results = model.predict(frame, conf=0.70, imgsz=640, verbose=False)
 
         if results[0].boxes is not None and len(results[0].boxes) > 0:
             boxes = results[0].boxes.xyxy.cpu()
@@ -87,13 +103,20 @@ def run_system(source_input):
                 
                 # Draw
                 x1, y1, x2, y2 = map(int, box)
+                
+                # Further prevent ghost detections by ignoring tiny random bounding boxes
+                box_width = x2 - x1
+                box_height = y2 - y1
+                if box_width < 40 or box_height < 40:
+                    continue
+                
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 
                 label_text = f"ID:{track_id} {brand_name}" if track_id != -1 else f"{brand_name}"
                 cv2.putText(frame, label_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
-                # Log to DB
-                if conf > 0.6 and track_id not in logged_objects:
+                # Log to DB (Also checking against a higher threshold here just to be safe)
+                if conf > 0.80 and track_id not in logged_objects:
                     uuid_code = log_inspection(conn, track_id, brand_name, conf)
                     print(f"📝 Logged to DB: {uuid_code} | {brand_name}")
                     logged_objects.add(track_id)

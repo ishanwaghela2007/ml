@@ -1,4 +1,7 @@
 ultralytics
 opencv-python
 pandas
-uuid
+ncnn
+fastapi
+uvicorn
+websockets
