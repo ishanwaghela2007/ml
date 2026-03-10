@@ -39,13 +39,17 @@ def run_system(source_input):
     base_dir = Path(__file__).resolve().parent.parent
     
     # Paths to your trained weights (prioritizing lightweight versions for Raspberry Pi)
+    onnx_model_path = base_dir / "runs/detect/brand_experiment2/weights/best.onnx"
     ncnn_model_path = base_dir / "runs/detect/brand_experiment2/weights/best_ncnn_model"
     tflite_model_path = base_dir / "runs/detect/brand_experiment2/weights/best_saved_model/best_float32.tflite"
     pt_model_path = base_dir / "runs/detect/brand_experiment2/weights/best.pt"
     log_path = base_dir / "logs/inspection_history.csv"
     
     # Load Model
-    if ncnn_model_path.exists():
+    if onnx_model_path.exists():
+        print(f"🚀 Loading optimized ONNX model: {onnx_model_path}")
+        model = YOLO(str(onnx_model_path), task='detect')
+    elif ncnn_model_path.exists():
         print(f"🚀 Loading highly-optimized NCNN model: {ncnn_model_path}")
         model = YOLO(str(ncnn_model_path), task='detect')
     elif tflite_model_path.exists():
