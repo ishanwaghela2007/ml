@@ -131,14 +131,13 @@ def run_system(source_input, headless=False):
         # The model was exported at 320x320, so we match that scale
         small_frame = cv2.resize(frame, (640, 480), interpolation=cv2.INTER_AREA)
 
-        # Using a high confidence threshold (0.85) to prevent wrong detections
-        # imgsz=320 matches the re-exported model for maximum speed
-        results = model.predict(small_frame, conf=0.85, imgsz=320, verbose=False)
+        # Inference with tracking
+        results = model.track(small_frame, conf=0.90, imgsz=320, persist=True, verbose=False)
 
+        detections = []
         if results[0].boxes is not None and len(results[0].boxes) > 0:
             boxes = results[0].boxes.xyxy.cpu()
             
-            # Extract tracking IDs safely (predict doesn't assign IDs, so default to -1)
             if results[0].boxes.id is not None:
                 track_ids = results[0].boxes.id.int().cpu().tolist()
             else:
@@ -149,8 +148,6 @@ def run_system(source_input, headless=False):
 
             for box, track_id, cls, conf in zip(boxes, track_ids, clss, confs):
                 brand_name = model.names[int(cls)]
-                
-                # Draw
                 x1, y1, x2, y2 = map(int, box)
                 
                 # Ignore tiny ghost bounding boxes
@@ -159,19 +156,39 @@ def run_system(source_input, headless=False):
                 if box_width < 30 or box_height < 30:
                     continue
                 
-                # Only show detections with ≥90% confidence
-                if conf < 0.90:
+                # Filter confidence
+                if conf < 0.95:
                     continue
 
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                label_text = f"ID:{track_id} {brand_name}" if track_id != -1 else brand_name
-                cv2.putText(frame, label_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                detections.append((brand_name, conf, (x1, y1, x2, y2), track_id))
 
-                # Log to DB only when model is very confident (≥95%)
-                if conf >= 0.95 and track_id not in logged_objects:
+                if not headless:
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    label_text = f"ID:{track_id} {brand_name}" if track_id != -1 else brand_name
+                    cv2.putText(frame, label_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+        # Persistence & Gap Logic
+        current_time = time.time()
+        if not hasattr(run_system, 'logged_ids'):
+            run_system.logged_ids = set()
+        if not hasattr(run_system, 'last_action_time'):
+            run_system.last_action_time = 0
+
+        global_gap = 5.0 # 5 seconds gap
+        time_since_last_log = current_time - run_system.last_action_time
+
+        if detections and time_since_last_log > global_gap:
+            for brand_name, conf, _, track_id in detections:
+                if track_id != -1:
+                    if track_id in run_system.logged_ids:
+                        continue
+                    
+                    run_system.logged_ids.add(track_id)
                     uuid_code = log_inspection(conn, track_id, brand_name, conf)
-                    print(f"📝 Logged to DB: {uuid_code} | {brand_name}")
-                    logged_objects.add(track_id)
+                    run_system.last_action_time = current_time
+                    print(f"📝 [LOGGED] {brand_name} (ID:{track_id}). UUID: {uuid_code}. Gap active for {global_gap}s")
+                    break
+                # Skip logging if track_id is -1
 
         # ── FPS counter ──
         fps_counter += 1
