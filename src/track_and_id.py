@@ -428,7 +428,7 @@ if __name__ == "__main__":
     parser.add_argument("--source", type=str, default="0", help="Video source (index or path)")
     parser.add_argument("--run", type=str, default="balanced_run", help="Experiment name (folder in runs/detect/)")
     parser.add_argument("--cooldown", type=float, default=5.0, help="Seconds to wait between loggings")
-    parser.add_argument("--min-conf", type=float, default=0.07, help="Detection confidence threshold")
+    parser.add_argument("--min-conf", type=float, default=0.7, help="Detection confidence threshold")
     parser.add_argument("--skip", type=int, default=2, help="Process every Nth frame")
     parser.add_argument("--imgsz", type=int, default=320, help="Input image size")
     parser.add_argument("--min-area", type=int, default=6000, help="Minimum bounding box area")
